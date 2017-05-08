@@ -1,0 +1,128 @@
+---
+title: "MSCA31008_HW3_Part2"
+author: "Zhiyin Shi"
+date: "February 3, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Load data and seperate data by 70:30.
+```{r}
+#Import data
+library(caret)
+data("GermanCredit")
+my.data <- GermanCredit
+
+#Select numerical data only
+my.data.num <- my.data[, 1:7]
+names(my.data.num)
+
+#Create training/testing datasets
+index.train <- sample(1:nrow(my.data.num), size = 0.7 * nrow(my.data.num))
+```
+
+2. Perform PCA
+```{r}
+#First, check the necessity of data normalization by examining mean and variance.
+apply(my.data.num, 2, mean)
+apply(my.data.num, 2, var)
+#From the mean and variance results, we can see the values of each feature vary a lot, thereby scaling is needed.
+pca.train <- prcomp(my.data.num[index.train, ], scale = TRUE)
+pca.train
+```
+
+3. Create scre plot and select number of components you would like to retain.
+```{r}
+plot(pca.train)
+
+vaf.dis <- (pca.train$sdev)^2 / sum((pca.train$sdev)^2)
+
+vaf.cum <- c(vaf.dis[1], rep(0, 6))
+for (i in 2 : 7) { vaf.cum[i] <- vaf.dis[i] + vaf.cum[i - 1] }
+
+plot(1 : 7, vaf.cum, main = "Scree Plot for PCA Train", xlab = "Component", 
+     ylab = "VAF", type = "l", col = "11")
+```
+Comment: In order to reach a disired variance explained as well as to achieve dimension reduction purpose, I will choose the first 4 components， with VAF = 75%.\
+\
+4. Plot Component 1 versus Component 2/3/4. Interpret and name the components.
+```{r}
+library(devtools)
+install_github("ggbiplot", "vqv")
+library(ggbiplot)
+
+biplot.12 <- ggbiplot(pca.train, choices = c(1, 2), scale = 0)
+biplot.12
+pca.train$rotation[, c(1, 2)]
+```
+**Biplot PC1 vs. PC2:** PC1 explains 23.8% of the variance and PC2 explains 20.9% of the variance. From the biplot as well as the factor loadings, we can see PC1 assigns approximatetly equal negative weights on "Duration" and "Amount", slightly positive weight on "InstallmenRatePercentage", and nearly zero weights on the rest four variables. PC2 assigns nearly negative weights on "Duration" and "Amount", and positive for the rest 5 features. These descriptions indicate: \
+1. Features "Duration" and "Amount" are correlated in PC1. This makes sense because people build up credit over years, those who have longer credit duration are likely to have higher credit amount. Therefore PC1 roughly corresponds to **Length of Credit History**. \
+2. Features "ResidenceDuration", "Age" are highly positively weighted in PC2. This also makes sence since as people grow older, their residence duration and number of credits are also likely to increase. Thereby PC2 roughly corresponds to **Age**.
+
+```{r}
+biplot.13 <- ggbiplot(pca.train, choices = c(1, 3), scale = 0)
+biplot.13
+pca.train$rotation[, c(1, 3)]
+```
+We have discussed PC1 in the previous section, and will focus on PC3 here. PC3 explains 16.1% of the variance, feature "InstallmentRatePercentage" is extensively negatively weighted in PC3 and feature "NumberPeopleMaintenance" is very positively weighted. From these facts, we can tell PC3 roughly corresponds to **NumberPeopleMaintenance**, the number of people liable to provide maintenance for.\
+
+```{r}
+biplot.14 <- ggbiplot(pca.train, choices = c(1, 4), scale = 0)
+biplot.14
+pca.train$rotation[, c(1, 4)]
+```
+We have discussed PC1 in the previous section, and will focus on PC4 here. PC4 explains 13.4% of teh variance, "ResidenceDuration" and "Age" are positively weighted while "InstallmentRatePercentage", "NumberExistingCredits" and "NumberPeopleMaintenance are negatively weighted. Thereby PC4 can correspond to a **combined effect of "InstallmentRatePercentage" and "NumberExistingCredits"** as they are correlated. \
+\
+5. Show component loadings are orthogonal.
+```{r}
+round(t(pca.train$rotation[, 1 : 4]) %*% pca.train$rotation[, 1 : 4], 2)
+```
+Yes, the component loadings are orthogonal. \
+\
+6. Show component scores are orthognal. 
+```{r}
+round(t(pca.train$x[, 1 :4 ]) %*% pca.train$x[, 1 : 4], 2)
+```
+Yes, the component scores are orthogonal.\
+\
+7. Perform holdout validation of PCA.
+```{r}
+pca.valid <- predict(pca.train, newdata = scale(my.data.num[-index.train, ]))
+#Holdout
+round(cor(as.vector(scale(my.data.num[-index.train, ])), as.vector(pca.valid[, 1 : 4] %*% t(pca.train$rotation)[1 : 4, ])), 2)
+#Training
+round(cor(as.vector(scale(my.data.num[index.train, ])), as.vector(pca.train$x[, 1 : 4] %*% t(pca.train$rotation)[1 : 4, ])), 2)
+```
+The covariance between original training dataset and traning dataset recovered from the first 4 principal components is 0.86, which indicate very strong correlation and the first 4 PCs explained the original data pretty well.\
+The covariance between original validating dataset and validating dataset recovered from the first 4 principal components of traning model is 0.44. The correlation is not as strong as training, but still moderately correlated.\
+\
+8. Compute VAF for holdout sample. From last step, we computed the covariance between holdout sample and factor scores with the first 4 PCs. The value is 0.44. 
+```{r}
+round(cor(as.vector(scale(my.data.num[-index.train, ])), as.vector(pca.valid[, 1 : 4] %*% t(pca.train$rotation)[1 : 4, ])), 2)
+```
+9. Rotate the component loadings using varimax rotation. Use R function varimax() for it. Does it yield any different interpretation of PCs?
+```{r}
+#Before rotation
+pca.train$rotation
+#After varimax
+varimax(pca.train$rotation)
+```
+Comment: After the transformation through varimax, some preselected features in the traning model maintained high weight in each componets, some features' weights are reduced to zero and some others are added into each PC. Those features which continue to share a heavy weight are stable and should be considered primarily when analyzing the constitution of pricipal components.\
+We can see for PC1 the effect of "Amount" has been reduced, and "Duration" still explained the PC1. For PC2, in addition to "ResidenceDuration", "Amount" and "NumberExistingCredits" also become major contributors. For PC3, "InstallmentRatePercentage" still accounts for a heavy weight, with "ResidenceDuration" added to it. For PC4, it is still  "ResidenceDuration" weighted the most.\
+\
+10. Plot rotated loadings 1 vs. 2/3. Do you think PCs reduced this data a lot? Do you like it?
+```{r}
+rot.loading <- varimax(pca.train$rotation)$rotmat
+biplot(x = as.matrix(pca.train$x[,1:2]), y = as.matrix(rot.loading[,1:2]), scale = 0)
+
+biplot(x = as.matrix(pca.train$x[,c(1,3)]), y = as.matrix(rot.loading[,c(1, 3)]), scale = 0)
+```
+Yes, I think PCs reduced the dataset a lot, and there is a covariance of 0.86 between original sample and recovered sample from first four components. By reducing the data to 4PCs, still 75% of the variance can be explained. Although PCA did not reduce the data to 2 PCs, but still help us reduced a lot. 
+
+
+
+
+

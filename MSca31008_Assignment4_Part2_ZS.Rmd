@@ -1,0 +1,75 @@
+---
+title: "MSCA31008_Assignment4_Part2"
+author: "Zhiyin Shi"
+date: "February 17, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+0. Import data
+```{r}
+library(caret)
+data("GermanCredit")
+mydata <- GermanCredit
+colnames(mydata)
+#Columns used in Logistic Model
+best.predictor <- c(10, 1, 2, 3, 5, 8, 9, 11, 12, 13, 15, 16, 17, 18, 20, 
+                    25, 26, 31, 32, 33, 38, 43, 46, 47, 53, 56)
+set.seed(618)
+index <- sample(1:nrow(mydata), size = 0.7 * nrow(mydata))
+Train <- mydata[index, best.predictor ]
+Holdout <- mydata[-index, best.predictor ]
+```
+
+1. Build a tree model using rpart with cp = 0, minsplit = 30, xval = 10.
+```{r}
+library(rpart)
+tree.cp0 <- rpart(formula = Class ~ ., data = Train, 
+                  control = rpart.control(cp = 0, minsplit = 30, xval = 10))
+```
+
+2. Evaluate the tree and its parameter.
+```{r}
+plotcp(tree.cp0)
+printcp(tree.cp0)
+plot(tree.cp0,main="Classification Tree: German Credit", uniform=TRUE)
+text(tree.cp0, cex=0.6, use.n=TRUE)
+
+#From the cross validation of different cp values, cp = 0.006 results in the smallest cv error. 
+tree.prune.cp0 <- prune(tree.cp0, cp = 0.006)
+plot(tree.prune.cp0,main="Prune Tree cp = 0.006: German Credit", uniform=TRUE)
+text(tree.prune.cp0, cex=0.6, use.n=TRUE)
+```
+**Comment:** From the cross validation of different cp values, cp = 0.006 results in the smallest cv error. Therefore we choose cp = 0.006, which results in 15 splits (16 branches). \
+\
+3.  Generate confusion matrix for this pruned tree.
+```{r}
+table(pred.class = predict(tree.prune.cp0, type = "class"), 
+      real.class = Train[, "Class"] )
+```
+**Comment:** From the confusion matrix, pruned tree model with cp = 0.006 predicts the training set with 81% accuracy. The flase negative percentage is 5% and false positive is around 14%. 81% accuracy is pretty good and we will accept this model and move onto test dataset.\
+\
+4. Perform holdout testing.
+```{r}
+table(pred.class = predict(tree.prune.cp0, type = "class", newdata = Holdout), 
+      real.class = Holdout[, "Class"] )
+```
+
+**Comment:** From the confusion matrix, we can see the model predicts holdout dataset with 67% accuracy, with false positive 23% and false negative 10%. This accuracy is lower than the training dataset, but it is reasonable since testing error rate usually is higher than training error. To improve the accuracy further, we may consider random forest or boosting methods, which may reduce the error rate further. \
+\
+5. Comparision between this model and logistic model. \
+**Comment:** In the training dataset, both models yields similar accuracy: 77% for logistic model and 81% for pruned tree model with cp = 0.006. As for the holdout set, logistic model classifies the classes with 76% accuracy while tree model's is lower, only 67%. Both model results in similar level of bias, but tree model has higher variance hence less robust. I would recommend logistic model over tree model in this case. 
+
+5. Save Result
+```{r}
+tree.pred.train <- predict(tree.prune.cp0, type = "class")
+tree.pred.test <- predict(tree.prune.cp0, type = "class", 
+                          newdata = Holdout)
+write.table(tree.pred.train, file ='/Users/JaneShi/Desktop/MSCA31008/Assignment5/treePredTrain.csv', col.names = FALSE, row.names = FALSE)
+
+write.table(tree.pred.test, file ='/Users/JaneShi/Desktop/MSCA31008/Assignment5/treePredTest.csv', 
+col.names = FALSE, row.names = FALSE)
+```

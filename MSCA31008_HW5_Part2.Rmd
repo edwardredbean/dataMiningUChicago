@@ -1,0 +1,131 @@
+---
+title: "MSCA31008_HW5_Part2"
+author: "Zhiyin Shi"
+date: "March 3, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+0. Import Data
+```{r}
+library(caret)
+data("GermanCredit")
+best.predictor <- c(10, 1, 2, 3, 5, 8, 9, 11, 12, 13, 15, 16, 17, 18, 20, 
+                    25, 26, 31, 32, 33, 38, 43, 46, 47, 53, 56)
+mydata <- GermanCredit
+mydata <- mydata[, best.predictor]
+
+set.seed(618)
+index <- sample(1:nrow(mydata), size = 0.7 * nrow(mydata))
+Train <- mydata[index, ]
+Holdout <- mydata[-index, ]
+
+```
+
+1. Fit LDA model
+```{r}
+library(MASS)
+lda.model <- lda(Class ~ ., data = Train, CV = FALSE)
+
+#lda.model
+
+lda.holdout.pred <- predict(lda.model, newdata = Holdout)$class
+
+cm.lda <- table(lda.holdout.pred, Holdout[, 1])
+prop.table(cm.lda)
+```
+**Comment:** From LDA, 77% of the test dataset are correctly predicted. False positive rate is 14%.
+
+2. Fit QDA model
+```{r}
+qda.model <- qda(Class ~ ., data = Train, CV = FALSE)
+
+#qda.model
+
+qda.holdout.pred <- predict(qda.model, newdata = Holdout)$class
+
+cm.qda <- table(qda.holdout.pred, Holdout[, 1])
+prop.table(cm.qda)
+```
+**Comment:** From QDA, 72% of the test dataset are correctly predicted. False positive rate is 11%. Although its false positive rate decreases by 3% as compared to LDA, its prediction accuracy falls by 5%. Therefore, LDA works better in our case.
+
+3. Ensemble Model
+```{r}
+#Load all data into one table
+tree.pred.train <- read.csv('/Users/JaneShi/Desktop/MSCA31008/Assignment5/treePredTrain.csv', header = FALSE)
+tree.pred.test <- read.csv('/Users/JaneShi/Desktop/MSCA31008/Assignment5/treePredTest.csv', header = FALSE)
+
+lr.pred.train <- read.csv('/Users/JaneShi/Desktop/MSCA31008/Assignment5/lrPredTrain.csv', header = FALSE)
+lr.pred.test <- read.csv('/Users/JaneShi/Desktop/MSCA31008/Assignment5/lrPredTest.csv', header = FALSE)
+
+lda.pred.train <- predict(lda.model)$class
+lda.pred.test <- predict(lda.model, newdata = Holdout)$class
+
+qda.pred.train <- predict(qda.model)$class
+qda.pred.test <- predict(qda.model, newdata = Holdout)$class
+
+ensemble.train <- data.frame(matrix(nrow = 700, ncol = 5))
+ensemble.test <- data.frame(matrix(nrow = 300, ncol = 5))
+colnames(ensemble.train) <- c("Tree", "LR", "LDA", "QDA", "Ensemble")
+colnames(ensemble.test) <- c("Tree", "LR", "LDA", "QDA", "Ensemble")
+
+ensemble.train[,1] <- tree.pred.train
+ensemble.train[,2] <- lr.pred.train
+ensemble.train[,3] <- lda.pred.train
+ensemble.train[,4] <- qda.pred.train
+
+ensemble.test[,1] <- tree.pred.test
+ensemble.test[,2] <- lr.pred.test
+ensemble.test[,3] <- lda.pred.test
+ensemble.test[,4] <- qda.pred.test
+
+#Ensemble model function
+ensemble.model <- function(x) 
+{
+  for (i in 1 : nrow(x)) 
+  {
+    good.ct <- 0
+    bad.ct <- 0
+    for (j in 1 : (ncol(x) - 1)) 
+    {
+      if (x[i, j] == 'Good') 
+      {
+        good.ct <- good.ct + 1
+      } else 
+      {
+        bad.ct <- bad.ct + 1
+      }
+    }
+    if (good.ct > bad.ct) 
+    {
+      x[i, ncol(x)] = 'Good'
+    } else 
+    {
+      x[i, ncol(x)] = 'Bad'
+    }
+  }
+  return(x[, ncol(x)])
+}
+
+ensemble.pred.train <- ensemble.model(ensemble.train)
+head(ensemble.pred.train)
+
+ensemble.pred.test <- ensemble.model(ensemble.test)
+head(ensemble.pred.test)
+
+#Condusion Matirx
+cm.train <- table(ensemble.pred.train, Train[, 1])
+prop.table(cm.train)
+cm.test <- table(ensemble.pred.test, Holdout[, 1])
+prop.table(cm.test)
+```
+**Comment:** In the train dataset, 81% of data are correctly predicted, and the false positive rate drops to 8.7% only. In the holdout dataset, 77% of the data are correcly predicted and the false positive rate is 10.7%. \
+
+When compared with 4 individual models, we can see for the ensemble model the percentage of correct prediction did not vary by much, but the false positive rate decreases a lot. The QDA did not make a good prediction as other three models, but its effect was largely reduce in the ensemble model. The tree model resulted in a large false positive rate, but the rate in ensemble model was largely reduced. \
+
+The ensemble model reduces variances and hence gives a better result, I prefer this model. In this specific case, although the improvement is not drastic, but is still the best model as compared to individual 4 models.
+
+

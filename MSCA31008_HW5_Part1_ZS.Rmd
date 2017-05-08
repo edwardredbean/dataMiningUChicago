@@ -1,0 +1,78 @@
+---
+title: "MSCA31008_HW5_Part1"
+author: "Zhiyin Shi"
+date: "February 26, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+0. Import Data
+```{r}
+library(caret)
+data("GermanCredit")
+mydata <- GermanCredit[, 1:7]
+mydata <- mydata[, c(2, 1, 3, 4, 5, 6, 7)]
+set.seed(618)
+index <- sample(1:nrow(mydata), size = 0.7 * nrow(mydata))
+Train <- mydata[index, ]
+Holdout <- mydata[-index, ]
+head(Train)
+
+source('clusterreg.R')
+source('clusterregPredict.R')
+```
+
+1. Train cluster-wise regression model
+```{r}
+germanCredit.cluster1 <- clustreg(Train, 1, 10, 711, 15)
+germanCredit.cluster2 <- clustreg(Train, 2, 10, 711, 15)
+germanCredit.cluster3 <- clustreg(Train, 3, 10, 711, 15)
+
+rsq.c1 <- germanCredit.cluster1$rsq.best
+rsq.c2 <- germanCredit.cluster2$rsq.best
+rsq.c3 <- germanCredit.cluster3$rsq.best
+
+rsq <- c(rsq.c1, rsq.c2, rsq.c3)
+rsq
+par(mfrow = c(1, 1))
+plot(1 : 3, rsq, main = "Scree Plot for Cluster-wise regression",
+xlab = "Number of Clusters", ylab = "R Squared", type = "l", col = "11")
+```
+
+2. Test holdout dataset
+```{r}
+germanCredit.holdout.cluster1 <- clustreg.predict(germanCredit.cluster1, Holdout)
+germanCredit.holdout.cluster2 <- clustreg.predict(germanCredit.cluster2, Holdout)
+germanCredit.holdout.cluster3 <- clustreg.predict(germanCredit.cluster3, Holdout)
+
+rsq.test <- c(germanCredit.holdout.cluster1$rsq, germanCredit.holdout.cluster2$rsq,
+              germanCredit.holdout.cluster3$rsq)
+rsq.test
+
+germanCredit.cluster1$results
+```
+
+3. Selection of model and summary
+```{r}
+#germanCredit.cluster1$results
+#germanCredit.holdout.cluster1$results
+
+#germanCredit.cluster2$results
+#germanCredit.holdout.cluster2$results
+
+#germanCredit.cluster3$results
+#germanCredit.holdout.cluster3$results
+```
+**Comments:** For the model with one cluster, the train rsq is 49.7% and test rsq is 50%. The result is not good, which makes us to think may be there are more clusters.\
+Then we tried model of two clusters, it yields train rsq of 82.5% and test rsq of 80.1%. This is a significant improvement in rsq, and the number of significant coefficients also increased.\
+We also tried three cluster model, it yields train rsq of 91.3% and test rsq of 87%. The rsq improved by 10% at the cost of decreading number of significant coefficients by one.\
+After trading off, I would choose cluster of three as the final model, because it yields the best r square in both train and test dataset.
+
+
+
+
+
+

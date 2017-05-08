@@ -1,0 +1,144 @@
+---
+title: "MSCA31008_HW3_Part1"
+author: "Zhiyin Shi"
+date: "January 31, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Import the data and convert them to desired format. In this assignment, I am assuming performing market segmentation for credit card companies, thereby some features related to personal finance will be considered as one of my selection.\
+\
+After considering how credit card companies want to stratify their potential customers, the following 6 variables are chosen to conduct classification analysis:\
+Purpose, Personal.status.sex, Housing, Job, Savings account/bonds
+
+```{r}
+library(plyr)
+#1. Data prepration
+data.raw <- read.csv("/Users/JaneShi/Desktop/MSCA31008/Assignment3/german.csv",
+                     header = FALSE, sep = "")
+data.cat <- as.data.frame(data.raw[, c(4, 6, 9, 15, 17)])
+data.cat[,1] <- revalue(data.cat[,1], c(A40 = 1, A41 = 2, A42 = 3, A43 = 4, A44 = 5,
+                        A45 =6, A46 = 7, A47 = 8, A48 = 9, A49 = 10, A410 = 11))
+data.cat[,2] <- revalue(data.cat[,2], c(A61 = 1, A62 = 2, A63 = 3, A64 = 4, A65 = 5))
+data.cat[,3] <- revalue(data.cat[,3], c(A91 = 1, A92 = 2,A93 = 3, A94 = 4, A95 = 5))
+data.cat[,4] <- revalue(data.cat[,4], c(A151 = 1, A152 = 2, A153 = 3))
+data.cat[,5] <- revalue(data.cat[,5], c(A171 = 1, A172 = 2, A173 = 3, A174 = 4))
+head(data.cat)
+
+#Training/Test sets
+index.train <- sample(1:nrow(data.cat), size = 0.632 * nrow(data.cat))
+```
+2. Determine 2, 3, 4,...N class solutions.\
+2.1 No. of Class = 2
+```{r}
+library(poLCA)
+
+f <- cbind(V4, V6, V9, V15, V17) ~ 1
+
+#Run the poLCA 100 times to avoid local maxima
+LCA.2.multiRun <- c(rep(0, 100))
+for (i in 1 : 100) {
+  LCA.2.cur <- poLCA(f, data.cat[index.train, ], nclass=2, maxiter=1000, graphs=FALSE,
+                     tol=1e-10, na.rm=TRUE, probs.start=NULL)
+  LCA.2.multiRun[i] <- LCA.2.cur$llik
+}
+
+LCA.2.lm.check<-c("max" = max(LCA.2.multiRun), "min" = min(LCA.2.multiRun))
+LCA.2.lm.check
+
+LCA.2.Train <- poLCA(f, data.cat[index.train, ], nclass=2, maxiter=1000, graphs=TRUE,
+                     tol=1e-10, na.rm=TRUE, probs.start=NULL)
+```
+Comments: First, by running LCA for 100 times, I can say the global maxima is around -3670 and our training model reached the global maxima with maximum loglikelihood of -3671.407.\
+\
+Class1 shares 21.1% of population and class2 shares 78.9%. In class1, customers are highly likely to be single male professionals with high titles. They have high prbability of buying cars and owning their residence. For class2, customers are highly likely to be divorced female or single male employees with some level of skills. They have high probability of buying furniture and home appliances and owning their residence. \
+\
+Our model has AIC value = 7428.813. This value looks large to me, but we need to compare with other number of classes in order to make meaningful conclusions.
+\
+2.2 No. of Class = 3
+```{r}
+#Run the poLCA 100 times to avoid local maxima
+LCA.3.multiRun <- c(rep(0, 100))
+for (i in 1 : 100) {
+  LCA.3.cur <- poLCA(f, data.cat[index.train, ], nclass=3, maxiter=1000, graphs=FALSE,
+                     tol=1e-10, na.rm=TRUE, probs.start=NULL)
+  LCA.3.multiRun[i] <- LCA.3.cur$llik
+}
+
+LCA.3.lm.check<-c("max" = max(LCA.3.multiRun), "min" = min(LCA.3.multiRun))
+LCA.3.lm.check
+
+LCA.3.Train <- poLCA(f, data.cat[index.train, ], nclass=3, maxiter=1000, graphs=TRUE,
+                     tol=1e-10, na.rm=TRUE, probs.start=NULL)
+```
+Comments: By running LCA for 100 times, I can say the global maxima is around -3640 and our training model reached the global maxima with maximum loglikelihood of -3634.027.\
+\
+Class1 shares 62.6% of population, class2 shares 23.7% and class3 shares 13.7%. In class1, customers are highly likely to be skilled single male professionals. They have high prbability of buying new cars and home appliances, and owning their residence. For class2, customers are also skilled single male professionals. They have high probability of buying cars and owning their residence. As for class3, customers are skilled and divorced female professoinals. They have high probability of buying furniture, nearly equal probabilities of owning or renting a place. From this classification, we can see class1 and class2 are very similar and there is no need to seperate them. Through this merge, the resulting classification will converge to 2-class LCA.\
+\
+The model has AIC of 7398.055, which is pretty much similar to the 2-class LCA model.\
+\
+2.3 No. of Class = 4
+```{r}
+#Run the poLCA 100 times to avoid local maxima
+LCA.4.multiRun <- c(rep(0, 100))
+for (i in 1 : 100) {
+  LCA.4.cur <- poLCA(f, data.cat[index.train, ], nclass=4, maxiter=1000, graphs=FALSE,
+                     tol=1e-10, na.rm=TRUE, probs.start=NULL)
+  LCA.4.multiRun[i] <- LCA.4.cur$llik
+}
+
+LCA.4.lm.check<-c("max" = max(LCA.4.multiRun), "min" = min(LCA.4.multiRun))
+LCA.4.lm.check
+
+LCA.4.Train <- poLCA(f, data.cat[index.train, ], nclass=4, maxiter=1000, graphs=TRUE,
+                     tol=1e-10, na.rm=TRUE, probs.start=NULL)
+```
+Comments: By running LCA for 100 times, I can say the global maxima is around -3615 and our training model reached the global maxima with maximum loglikelihood of -3609.569.\
+\
+Class1 shares 21.1% of population, class2 shares 12.5%, class3 shares 13% and class4 shares 53.4%. In class1, customers are highly likely to be skilled single male professionals. They have high prbability of buying used cars and owning their residence. For class2, customers are single male but we can not tell about their professions. They have high probability of buying new cars and owning their residence. As for class3, customers are skilled and divorced female professoinals. They have high probability of buying furniture and home appliances, renting a place. As for class4, customers are single male professoinals. They have high probability of buying cars and electronics, mostly owning their residences. From this classification, we cannot see significant market stratification. To keep model simplicity, I would choose the 2-class LCA model over this one.\
+\
+The model has AIC of 7393.137, which is pretty much similar to previoue LCA models. And I conclude there is no need to futher stratify classes and make the model more complex.\
+\
+In conclusion, the saving account information does not vary much aross each class, and further seperate the population to 3 or 4 classes does not generate more meaningful insight or model accuracy enhancement. To mantain model simplicity I would choose 2-class LCA model to segment the market, and use this model to validate the testing dataset.\
+\
+3. Perform holdout validation of LCA.
+```{r}
+#Run 100 times to check global maxima
+LCA.2.multiRun.v <- c(rep(0, 100))
+for (i in 1 : 100) {
+  LCA.2.cur <- poLCA(f,data.cat[-index.train, ], nclass=2, maxiter=1000, graphs=FALSE,
+                     tol=1e-10, na.rm=TRUE, probs.start=LCA.2.Train$probs)
+  LCA.2.multiRun.v[i] <- LCA.2.cur$llik
+}
+
+LCA.2.lm.check.v<-c("max" = max(LCA.2.multiRun.v), "min" = min(LCA.2.multiRun.v))
+LCA.2.lm.check.v
+
+LCA.2.Valid <- poLCA(f, data.cat[-index.train, ], nclass=2, maxiter=1000, graphs=TRUE,
+                     tol=1e-10, na.rm=TRUE, probs.start=LCA.2.Train$probs)
+```
+Comments: First, by running LCA for 100 times, I ensured validating model reached global maxima with maximum loglikelihood of -2072.793.\
+\
+Class1 shares 32% of population and class2 shares 68%. In class1, customers are highly likely to be single male professionals with high titles. They have high prbability of buying cars and owning their residence. For class2, customers are highly likely to be divorced female or single male employees with some level of skills. They have high probability of buying new cars and home appliances and owning their residence. \
+\
+Our model has AIC value = 4231.587, nearly half of the training model.\
+\
+Comparison of train and validate model results of 2-class LCA:\
+The training model predicted the validation dataset pretty well. There are some differences in class sizes (21% and 79% for train, 32% and 68% for validate), but considering the difference in entire population, this difference is acceptable. As for the classification or conditional probability, both train and holdout results in exactly the same segmentation.\
+\
+4. Comment on goodness, stability, interprebility and adequacy of model solutions.\
+As for the goodness, LCA models with class = 2, 3, 4 resulted in approximately the same maximum loglikelihood, AIC and BIC creterion, there for the three models have equal goodness of fit. \
+\
+As for interpretibility, since increasing the number of classes does not generate new insights about market segmentation behaviors, we choose LCA model with 2 classes as our final model for holdout. \
+\
+By running each model 100 times, I ensured each solution reaches their global maxima, which built up the stability of our model.\
+\
+Finally, because the models all have very large AIC and BIC creterion,  I believe these classifications are not the optimal one. To improve the market segmentation with more sense, we should try different features and run LCA model again to find better solutions.\
+\
+5. Compare K-means solution in Asisgnment 2 with LCA solution.\
+In LCA model, we used categorical features, and we classified the population into two classes by personal status/sex, professions and purchase purposes. One class has twice the size of the other one. The AIC did not indicate a good classification and more combination of models need to be tested to find better solutions.\
+\
+In K-means solution, we used numerical features only, and we classified popultion into three classes based on the age and durations. The K-means and K-o-means resulted in more evenly splitted class sizes than LCA models. 

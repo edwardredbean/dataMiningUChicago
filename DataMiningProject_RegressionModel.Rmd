@@ -1,0 +1,171 @@
+---
+title: "DM Final Project_Logistic regression"
+author: "Jianghui Wen"
+date: "February 28, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. Data
+```{r}
+dataPath <- "/Users/cherish/Desktop/Data_Mining"
+uns.training <- read.csv(file=paste(dataPath, "uns_training.csv", sep="/"), header=TRUE)
+uns.testing <- read.csv(file=paste(dataPath, "uns_testing.csv", sep="/"), header=TRUE)
+```
+
+```{r}
+library(caret)
+library(nnet)
+library(MASS)
+library(glmnet)
+library(grid)
+library(gridExtra)
+library(plyr)
+```
+
+Fix the class name, make it consistant in both train and test dataset
+```{r}
+uns.training$UNS <- revalue(uns.training$UNS, c("very_low"="Very Low", "Low"="Low","Middle"="Middle","High"="High"))
+head(uns.training)
+
+```
+
+Check the colinearity
+```{r}
+pairs(uns.training[,1:5])
+```
+
+#2. Multinomial Logistic Regression
+```{r}
+uns.multinomial <- multinom(UNS ~ STG+SCG+STR+LPR+PEG, data=uns.training, Hess= TRUE, method="class")
+summary(uns.multinomial)
+```
+
+Using step() to select variables to build a good model
+or calculate p values to select significant varaibles using the following 
+ctable <- coef(summary(uns.polr))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p)
+```{r}
+step(uns.multinomial)
+```
+
+The result shows a good fitted model including predictors SCG,STR,LPR, PEG, with AIC=77.5996
+
+```{r}
+uns.multinomial.model <- multinom(UNS~SCG+STR+LPR+PEG, data=uns.training, Hess= TRUE, method="class")
+summary(uns.multinomial.model)
+```
+
+Hold out for multinomial logistic regression 
+```{r}
+uns.multinomial.test <- predict(uns.multinomial.model, newdata= uns.testing, type="class")
+round(prop.table(table(uns.testing$UNS, uns.multinomial.test)),2)
+cm.table <- data.frame(c(26,0,0,0),c(0,45,1,0),c(0,1,31,0),c(0,0,2,39))
+rownames(cm.table) <- c("Very Low","Low","Middle","High")
+colnames(cm.table) <- c("Very Low","Low","Middle","High")
+grid.table(cm.table)
+```
+
+#3.Proportional Odds logistic regression
+```{r}
+UNS.ordered <- ordered(uns.training$UNS, levels=c("Very Low","Low","Middle","High"))
+uns.polr <- polr(UNS.ordered~STG + SCG + STR + LPR + PEG, data=uns.training, Hess= TRUE, method="logistic")
+summary(uns.polr)
+```
+
+Using step() to select variables
+```{r}
+step(uns.polr)
+```
+
+The good fitted model including predictors SCG,STR,LPR,PEG, with AIC= 75.09955
+```{r}
+uns.polr.model <-  polr(UNS.ordered ~ SCG + STR+ LPR + PEG, data = uns.training, Hess = TRUE, method="logistic")
+summary(uns.polr.model)
+```
+
+Holdout for proportional odds logistic regression 
+```{r}
+uns.polr.test <- predict(uns.polr.model, newdata= uns.testing, type="class")
+```
+
+Confution matrix for polr.model
+```{r}
+table(uns.testing$UNS, uns.polr.test)
+round(prop.table(table(uns.testing$UNS, uns.polr.test)),2)
+cm.dataframe <- data.frame(c(26,0,0,0), c(0,45,1,0),c(0,1,32,0),c(0,0,1,39))
+rownames(cm.dataframe) <- c("Very Low","Low","Middle","High")
+colnames(cm.dataframe) <- c("Very Low","Low","Middle","High")
+grid.table(cm.dataframe)
+```
+
+#4. Compare the two models using Log Loss function
+```{r}
+log.loss <-  function(actual, pred){
+    eps <- 1e-15
+    if (!is.matrix(pred)) pred <- t(as.matrix(pred))
+    if (!is.matrix(actual)) actual <- t(as.matrix(actual))
+    nr <- nrow(pred)
+    pred <- apply(pred, c(1,2), function(x) max(min(x, 1-10^(-15)), 10^(-15)))
+    score <- -sum(actual*log(sweep(pred, 1, rowSums(pred), FUN="/")))/nr
+    return(score)
+}
+
+response.matrix <- function(Y)
+{
+    y_res <- matrix(NA,nrow = 0,ncol = 4)
+    for (i in 1:length(Y))
+    {
+        if (Y[i] == "Very Low")
+            y_res <- rbind(y_res,c(1,0,0,0))
+        if (Y[i] == "Low")
+            y_res <- rbind(y_res,c(0,1,0,0))
+        if (Y[i] == "Middle")
+            y_res <- rbind(y_res,c(0,0,1,0))
+        if (Y[i] == "High")
+            y_res <- rbind(y_res,c(0,0,0,1))
+    }
+    return (y_res)
+}
+```
+
+```{r}
+multinomial.prediction <- predict(uns.multinomial.model, newdata= uns.testing, type="probs")
+log.loss(response.matrix(uns.testing$UNS), multinomial.prediction[,c(4,2,3,1)])
+
+```
+*Log Loss value for multinomial model is: 0.06869159*
+
+```{r}
+polr.prediction <- predict(uns.polr.model, newdata= uns.testing, type="probs")
+log.loss(response.matrix(uns.testing$UNS), polr.prediction)
+```
+*Log loss value of proportional odds is: 0.05271212*
+
+#Response time
+```{r}
+#multinomial model
+system.time(uns.multinomial <- multinom(UNS ~ STG+SCG+STR+LPR+PEG, data=uns.training, Hess= TRUE, method="class"))
+system.time(step(uns.multinomial))
+
+#polr model
+system.time(uns.polr <- polr(UNS.ordered~STG + SCG + STR + LPR + PEG, data=uns.training, Hess= TRUE, method="logistic"))
+system.time(step(uns.polr))
+```
+
+response time:              user  system   elapsed 
+uns.multinom                0.030   0.004    0.051
+step(multinom)              0.263   0.037    0.332 
+uns.polr                    0.035   0.003    0.047 
+step(Polr)                  0.295   0.018    0.356 
+
+####microbenchmark
+```{r}
+library(microbenchmark)
+microbenchmark(uns.multinomial, step(uns.multinomial), uns.polr, step(uns.polr))
+```
+

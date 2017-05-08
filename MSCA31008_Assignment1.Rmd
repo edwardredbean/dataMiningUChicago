@@ -1,0 +1,199 @@
+---
+title: "MSCA31008_Assignment1_ZhiyinShi"
+author: "Zhiyin Shi"
+date: "January 15, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Read in data
+```{r}
+library(caret)
+data(GermanCredit)
+my.data <- GermanCredit
+```
+
+2. Apply regression model to set.seed(1) dataset and select the most significant predictors using stepwise method. In order to maintain consistency, we will used these predictors for linear model for all 1000 trials. 
+```{r}
+y <- "Amount"
+available.x <- colnames(my.data)[-2]
+chosen.x <- NULL
+r2 <- NULL
+
+while (length(available.x) > 0) {
+  best.r2 <- 0
+  for (this.x in available.x) {
+    rhs <- paste(c(chosen.x, this.x), collapse=" + ")
+    f <- as.formula(paste(y, rhs, sep=" ~ "))
+    this.r2 <- summary(lm(f, data=my.data))$r.square
+    if (this.r2 > best.r2) {
+      best.r2 <- this.r2
+      best.x <- this.x
+    }
+  }
+  chosen.x <- c(chosen.x, best.x)
+  available.x <- available.x[available.x != best.x]
+  r2 <- c(r2, best.r2)
+}
+chosen.x <- c("(Intercept)", chosen.x)
+r2 <- c(summary(lm(Amount ~ 1, data=my.data))$r.square, r2)
+
+cum.r2 <- cbind(chosen.x, r2)
+#Select the top 6 elements (intercept inclusive) that resulted in culmulative r^2 of 57%.
+(selected.feature <- cum.r2[1:6, 1])
+```
+
+3. Create 1000 indexing samples and an empty data frame to store final results.
+```{r}
+#Creating 1000 samples
+set.seed(711)
+index <- replicate(1000, sample(1:nrow(my.data), size = 0.632 * nrow(my.data)))
+
+head(index[,1])
+head(-index[,1])
+
+#Create a data frame that stores our result
+result <- data.frame(matrix(ncol = 9, nrow = 1000))
+colnames(result) <- c("Intercept", "Duration", "InstallmentRatePercentage", 
+                      "Job.Management.SelfEmp.HighlyQualified",
+                      "Personal.Male.Single","Telephone", "r.training", 
+                      "r.testing", "percent.r.fall")
+```
+
+4. For loop: For each sample, split training and testing samples, apply linear model, retrive model coefficients, r.squared.training, and r.squared.testing, and finally store in result table.
+```{r}
+for (i in 1:1000) {
+  #Split into training and testing
+  training <- my.data[index[,i], c(1,2,3,8,43,62)]
+  testing <- my.data[-index[,i], c(1,2,3,8,43,62)]
+  #Apply linear model
+  linear.model <- lm(Amount ~ Duration + InstallmentRatePercentage +
+                     Job.Management.SelfEmp.HighlyQualified + 
+                     Personal.Male.Single +
+                     Telephone, data = training)
+  #Coefficients
+  coefficients <- linear.model$coefficients
+  #r.squared.training
+  r.squared.training <- summary(linear.model)$r.squared
+  #r.squared.testing
+  prediction <- predict(linear.model, testing)
+  sse <- sum((testing[, 2] - prediction) ^ 2)
+  sst <- sum((testing[, 2] - mean(testing[,2])) ^ 2)
+  r.squared.test <- 1 - (sse/sst)
+  percent.r.fall <-(r.squared.training-r.squared.test) /r.squared.training
+  #Store data into dataframe result
+  sample.cur <- c(coefficients, r.squared.training, r.squared.test,
+                  percent.r.fall)
+  result[i,] <- t(sample.cur)
+}
+head(result)
+```
+
+5. Plot distribution of all coefficients, holdout r^2 and train r^2
+```{r}
+par(mfrow = c(3, 3))
+hist(result$Intercept, main = "Intercept")
+hist(result$Duration, main ="Duration")
+hist(result$InstallmentRatePercentage, main ="InstallmentRatePercentage")
+hist(result$Job.Management.SelfEmp.HighlyQualified, 
+     main ="Job.Mgmt.SelfEmp.HighQual")
+hist(result$Personal.Male.Single, main ="Personal.Male.Single")
+hist(result$Telephone, main ="Telephone")
+hist(result$r.training, main ="r.training")
+hist(result$r.testing, main ="r.testing")
+hist(result$percent.r.fall, main ="percent.r.fall")
+```
+
+6. Compute average and s.d of each coefficient
+```{r}
+c.meanAndSd <- data.frame(Mean = apply(result[,1:6], 2, mean),
+                          Sd = apply(result[,1:6], 2, sd))
+c.meanAndSd
+
+r.sq.meanAndSd <- data.frame(Mean = apply(result[,7:9], 2, mean),
+                          Sd = apply(result[,7:9], 2, sd))
+r.sq.meanAndSd
+```
+
+7. Compute average across 1000 to single model built using entire sample.
+```{r}
+#Entire sample data
+entireSampleData <- my.data[,c(1,2,3,8,43,62)]
+
+#Apply linear model
+linear.model <- lm(Amount ~ Duration + InstallmentRatePercentage +
+                     Job.Management.SelfEmp.HighlyQualified + 
+                     Personal.Male.Single +
+                     Telephone, data = entireSampleData)
+
+#Coefficients
+(coefficients.entire <- linear.model$coefficients)
+#r.squared
+(r.squared.entire <- summary(linear.model)$r.squared)
+
+(entireSample.cur <- c(coefficients.entire, r.squared.entire = r.squared.entire))
+```
+
+8. Compute 95% CI for coefficients.
+```{r}
+#Training/Testing Data
+CI <- function(a) {
+  lower <- c.meanAndSd$Mean[a] - qnorm(0.975)*c.meanAndSd$Sd[a]/sqrt(1000)
+  upper <- c.meanAndSd$Mean[a] + qnorm(0.975)*c.meanAndSd$Sd[a]/sqrt(1000)
+  c.i <- c(lower, upper)
+  return(c.i)
+}
+
+ci.result.scaled <-data.frame(matrix(nrow = 6, ncol = 2))
+colnames(ci.result.scaled) <- c("CI.lower.split", "CI.upper.split")
+rownames(ci.result.scaled) <- c("Intercept","Duration",
+                                "InstallmentRatePercentage",
+                                "Job.Management.SelfEmp.HighlyQualified",
+                                "Personal.Male.Single","Telephone")
+ci.result.scaled[1:6,] <- rbind(CI(1), CI(2), CI(3), CI(4), CI(5), CI(6))
+ci.result.scaled[,1] <- ci.result.scaled[,1]*(0.632^0.5)
+ci.result.scaled[,2] <- ci.result.scaled[,2]*(0.632^0.5)
+ci.result.scaled$range <- ci.result.scaled$CI.upper.split -
+                          ci.result.scaled$CI.lower.split
+ci.result.scaled
+
+#Entire sample
+ci.result.entire <-data.frame(matrix(nrow = 6, ncol = 2))
+colnames(ci.result.entire) <- c("CI.lower.entire", "CI.upper.entire")
+rownames(ci.result.entire) <- c("Intercept","Duration",
+                                "InstallmentRatePercentage",
+                                "Job.Management.SelfEmp.HighlyQualified",
+                                "Personal.Male.Single","Telephone")
+summary(linear.model)
+ci.result.entire[1:6, ] <- c(coef(summary(linear.model))[, 1] - 
+                               qnorm(0.975) * 
+                      coef(summary(linear.model))[,2] / sqrt(1000), 
+                      coef(summary(linear.model))[,1] + qnorm(0.975) * 
+                        coef(summary(linear.model))[,2] / sqrt(1000))
+ci.result.entire$range <- ci.result.entire$CI.upper.entire -
+                          ci.result.entire$CI.lower.entire
+ci.result.entire
+```
+
+9. Summurize your results.\
+1) As a first step, I applied stepwise method to the entire sample and selected the top 5 predictors that resulted in a culmulative r^2 of 57%.
+```{r}
+(selected.feature <- cum.r2[2:6, 1])
+```
+
+2) After running linear model 1000 times with different random sample partition, I got the distribution plot, mean, sd as well as the CI for all coefficients, r.squared.training and r.squared.testing. From the plot, I can tell each parameter following central limit theorem and its distribution is approxmimately normal.  
+```{r}
+c.meanAndSd
+
+ci.result.scaled
+```
+
+3) r.squared.testing has a wider distribution than r.squared.training, indicating the higher variance in testing dataset, but not vary apart too much.
+```{r}
+r.sq.meanAndSd
+```
+
+4) Comparing the confidence interval of splited and entire sample, it was found the splitted datasets resulted in a narrower confidence interval. This aligns with the bootstrap method which reduces the variance. 

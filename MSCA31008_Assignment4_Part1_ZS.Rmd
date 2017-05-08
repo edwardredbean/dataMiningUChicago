@@ -1,0 +1,117 @@
+---
+title: "MSCA31008_Assigment4"
+author: "Zhiyin Shi"
+date: "February 15, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Import data and split Train/Holdout
+```{r}
+library(caret)
+data("GermanCredit")
+mydata <- GermanCredit
+set.seed(618)
+index <- sample(1:nrow(mydata), size = 0.7 * nrow(mydata))
+Train <- mydata[index, ]
+Holdout <- mydata[-index, ]
+head(index)
+```
+
+2&3. Fit Logistic Regression model, try to find the selection of variables that results in lowest AIC.
+```{r}
+lr.train <- glm(Class ~ ., data = Train, family = binomial(link = logit))
+summary(lr.train)
+step(lr.train)
+
+lr.best.train <- glm(Class ~ Duration + Amount + InstallmentRatePercentage + 
+                       Age + Telephone + ForeignWorker + CheckingAccountStatus.lt.0 + 
+                       CheckingAccountStatus.0.to.200 + CheckingAccountStatus.gt.200 +
+                       CreditHistory.NoCredit.AllPaid + CreditHistory.ThisBank.AllPaid
+                     + CreditHistory.PaidDuly + CreditHistory.Delay + Purpose.NewCar +
+                       Purpose.Repairs + Purpose.Education +SavingsAccountBonds.lt.100
+                     + SavingsAccountBonds.100.to.500 +SavingsAccountBonds.500.to.1000
+                     + EmploymentDuration.4.to.7 + Personal.Male.Single +
+                       OtherDebtorsGuarantors.None +OtherDebtorsGuarantors.CoApplicant
+                     + OtherInstallmentPlans.Bank + Housing.Rent, data = Train, 
+                     family = binomial(link = logit))
+
+summary(lr.best.train)
+
+lr.best.pred <- lr.best.train$fitted.values
+par(mfrow=c(1,1))
+matplot(1:length(Train$Class), cbind(sort(Train$Class), sort(lr.best.pred + 1)), 
+        pch=16, xlab="Index", ylab="Response, Fitted Values")
+lr.best.pred[lr.best.pred >= 0.6] = 1
+lr.best.pred[lr.best.pred < 0.6] = 0
+matplot(1:length(Train$Class), cbind(sort(Train$Class), sort(lr.best.pred + 1)), 
+        pch=16, xlab="Index", ylab="Response, Fitted Values")
+```
+**Comment:** Among all the combination of predictors, `lr.best.train` with 25 variables generated the lowest AIC = 681.79. Therefore we will use this model for our analysis.\
+\
+
+4. Confusion Matrix
+```{r}
+cm <- matrix(nrow = 2, ncol = 2)
+colnames(cm) <- c("True.Good", "True.Bad")
+rownames(cm) <- c("Pred.Good", "Pred.Bad")
+
+true.predict <- cbind(true = as.integer(Train$Class) - 1, lr.best.pred)
+
+cm[1,1] <- sum(true.predict[, 1] == 1 & true.predict[, 2] == 1)
+cm[2,2] <- sum(true.predict[, 1] == 0 & true.predict[, 2] == 0)
+cm[2,1] <- sum(true.predict[, 1] == 1 & true.predict[, 2] == 0)
+cm[1,2] <- sum(true.predict[, 1] == 0 & true.predict[, 2] == 1)
+
+cm
+```
+**Comment:** After trying multiple thresholds for classifying Good and Bad, I found as threshold value increases, number of false positive (True.Bad.Pred.Good) decreases while number of fals negative (True.Good.Pred.Bad) increases. After trading-off among risks of which misclassification is worse, I chose threshold of 0.6 for final classification. Overall, the model correctly classify 77.4% of observations, this result is acceptable.\
+\
+5. Perform Holdout testing and generate confusion matrix.
+```{r}
+lr.best.holdout <- predict(lr.best.train, newdata = Holdout, type = "response")
+
+par(mfrow=c(1,1))
+matplot(1:length(Holdout$Class), cbind(sort(Holdout$Class), sort(lr.best.holdout + 1)), pch=16, xlab="Index", ylab="Response, Fitted Values")
+
+lr.best.holdout[lr.best.holdout >= 0.6] = 1
+lr.best.holdout[lr.best.holdout < 0.6] = 0
+
+matplot(1:length(Holdout$Class), cbind(sort(Holdout$Class), sort(lr.best.holdout + 1)),pch=16, xlab="Index", ylab="Response, Fitted Values")
+
+cm.holdout <- matrix(nrow = 2, ncol = 2)
+colnames(cm.holdout) <- c("True.Good", "True.Bad")
+rownames(cm.holdout) <- c("Pred.Good", "Pred.Bad")
+
+true.predict.h <- cbind(true = as.integer(Holdout$Class) - 1, lr.best.holdout)
+
+cm.holdout[1,1] <- sum(true.predict.h[, 1] == 1 & true.predict.h[, 2] == 1)
+cm.holdout[2,2] <- sum(true.predict.h[, 1] == 0 & true.predict.h[, 2] == 0)
+cm.holdout[2,1] <- sum(true.predict.h[, 1] == 1 & true.predict.h[, 2] == 0)
+cm.holdout[1,2] <- sum(true.predict.h[, 1] == 0 & true.predict.h[, 2] == 1)
+
+cm.holdout
+```
+**Comment:** In the holdout set, 76% of observations are correctly classified. There are 11% false positive and 13% false negative. As compared to the confusion matrix of train model, I concluded that holdout yields very close prediction and the train model predicts holdout dataset pretty well. 
+
+5. Export Data
+```{r}
+lr.pred.train <- lr.best.pred
+lr.pred.train[lr.pred.train == 1] = 'Good'
+lr.pred.train[lr.pred.train == 0] = 'Bad'
+
+lr.pred.test <- lr.best.holdout
+lr.pred.test[lr.pred.test == 1] = 'Good'
+lr.pred.test[lr.pred.test == 0] = 'Bad'
+
+head(lr.pred.train)
+head(lr.pred.test)
+
+write.table(lr.pred.train, file ='/Users/JaneShi/Desktop/MSCA31008/Assignment5/lrPredTrain.csv', col.names = FALSE, row.names = FALSE)
+
+write.table(lr.pred.test, file ='/Users/JaneShi/Desktop/MSCA31008/Assignment5/lrPredTest.csv', col.names = FALSE, row.names = FALSE)
+```
+

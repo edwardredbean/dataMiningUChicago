@@ -1,0 +1,165 @@
+---
+title: "MSCA31008_DataMining_Project"
+author: "Zhiyin Shi"
+date: "February 14, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##0. Import Data
+```{r}
+#Import Data
+dataPath <- "/Users/JaneShi/Desktop/MSCA31008/Project"
+
+uns.train <- read.csv(paste(dataPath, "uns_training.csv", sep = "/"), 
+                       header = TRUE, sep = ",")
+uns.test <- read.csv(paste(dataPath, "uns_testing.csv", sep = "/"), 
+                       header = TRUE, sep = ",")
+
+pairs(uns.train[,1:5])
+
+#Rename Column Values
+library(plyr)
+uns.train$UNS <- revalue(uns.train$UNS, c('High' = 'High', 'Low' = 'Low', 
+                          'Middle' = 'Middle', 'very_low' = 'Very Low'))
+
+#Check the colinearity
+pairs(uns.training[,1:5])
+```
+
+##1 Functions for Response Transformation and LogLoss Computation
+```{r}
+log.loss <-  function(actual, pred){
+    eps <- 1e-15
+    if (!is.matrix(pred)) pred <- t(as.matrix(pred))
+    if (!is.matrix(actual)) actual <- t(as.matrix(actual))
+    nr <- nrow(pred)
+    pred <- apply(pred, c(1,2), function(x) max(min(x, 1-10^(-15)), 10^(-15)))
+    score <- -sum(actual*log(sweep(pred, 1, rowSums(pred), FUN="/")))/nr
+    return(score)
+}
+
+response.matrix <- function(Y)
+{
+    y_res <- matrix(NA,nrow = 0,ncol = 4)
+    for (i in 1:length(Y))
+    {
+        if (Y[i] == "High")
+            y_res <- rbind(y_res,c(1,0,0,0))
+        if (Y[i] == "Low")
+            y_res <- rbind(y_res,c(0,1,0,0))
+        if (Y[i] == "Middle")
+            y_res <- rbind(y_res,c(0,0,1,0))
+        if (Y[i] == "Very Low")
+            y_res <- rbind(y_res,c(0,0,0,1))
+    }
+    return (y_res)
+}
+```
+
+##2. Classification Tree 
+1.1 Create the tree model, with UNS as response and use all 5 independent variable.
+```{r}
+library(tree)
+library(microbenchmark)
+#Train Classification Tree Model
+tree.uns <- tree(UNS ~ ., data = uns.train)
+microbenchmark(tree(UNS ~ ., data = uns.train))
+summary(tree.uns)
+```
+**Comment:** By fitting a large tree to the train dataset, the tree model results in 10 terminal nodes, the variables that actually used for tree model are PEG, LPR and STR. The structure of tree model is shown in FigureXX. The result is pretty good, with classification error rate of 3.9%, which means only 10 out of 258 data points in train dataset are misclassified with this model. Let's see how the tree model fits in test dataset below.\
+```{r}
+plot(tree.uns)
+text(tree.uns, pretty = 0)
+```
+**Comment:** Applying tree model on test dataset results in misclassification of 11 out 145 observations, which results in 7.6% classification。 This value doubled the error rate in traning dataset, but is still a good result.\
+\
+\
+1.2 Find the Pruned Tree with optimal complexity parameter.\
+Pruning a tree may lead to improved results. Now, lets first choose the optimal complexity parameter through 6-fold cross validation, and see if the pruned tree with the best alpha value can yield a better test error than the original tree above.
+```{r}
+cv.tree.uns <- cv.tree(tree.uns, FUN = prune.misclass, K = 6)
+microbenchmark(cv.tree(tree.uns, FUN = prune.misclass, K = 6))
+cv.tree.uns
+
+plotCVClassTree1 <- plot(cv.tree.uns$size, cv.tree.uns$dev, type = "b", main = "Classification Tree: CV Error vs No.of Terminal Nodes")
+
+plotCVClassTree2 <- plot(cv.tree.uns$k, cv.tree.uns$dev, type = "b", main = "Classification Tree: CV Error vs Complexity Parameter")
+```
+**Comment:** From the result, cross-validation suggests us to stick with the original unpruned tree, which has lowest misclassifiction error.\
+\
+We will save the test error and compare it with other model classes later.\
+```{r}
+#Predict the test dataset and Compute test errors
+tree.uns.pred <- predict(tree.uns, uns.test[, -6], type = "class")
+
+llClassTree <- log.loss(response.matrix(uns.test$UNS), predict(tree.uns, uns.test[, -6]))
+
+library(grid)
+library(gridExtra)
+cmClassTree <- grid.table(table(tree.uns.pred, uns.test[, 6]))
+```
+
+##3. Random forest
+The classification tree with 10 nodes has resulted in a pretty good error rate, but will random forest perform even better? We will fit random forest model on this dataset and evaluate its test error. The number of trees in RF model is set to 500. There are 5 features in our dataset, we don't which number of predictors will result in better prediction results, thereby cross-validation is performed to select the optimal number of predictors for each tree in RF model.\
+\
+2.1 Select no. of predictors to use for each tree in RF through CV.
+```{r}
+suppressWarnings(library(randomForest))
+#CV to select the best m (Number of Predictors)
+rf.uns.cv <- rfcv(uns.train[, -6], uns.train[, 6], cv.fold = 6, step = 0.9)
+microbenchmark(rfcv(uns.train[, -6], uns.train[, 6], cv.fold = 6, step = 0.9))
+plotCVRF <- plot(rf.uns.cv$n.var, rf.uns.cv$error.cv, type = "b", main = "Random Forest: CV Error vs No. of predictors")
+```
+**Comment:** From the CV, we will choose m = 2 as our number of predictors used in each tree in RF.\
+\
+2.2 Fit Random Forest model.
+```{r}
+#Fit train dataset with RF
+set.seed(1222711)
+rf.uns <- randomForest(UNS ~ ., data = uns.train, mtry = 2, importance = TRUE)
+microbenchmark(randomForest(UNS ~ ., data = uns.train, mtry = 2, importance = TRUE))
+
+cmRFTrain <- grid.table(table(rf.uns$predicted, uns.train[, 6]))
+
+#Predict test dataset and Compute test errors
+rf.uns.pred <- predict(rf.uns, newdata = uns.test[, -6])
+
+llRF <- log.loss(response.matrix(uns.test$UNS), predict(rf.uns, newdata = uns.test[, -6], type = 'prob'))
+
+cmRFTest <- grid.table(table(rf.uns.pred, uns.test[, 6]))
+```
+
+##6 Comparison
+```{r}
+library(grid)
+library(gridExtra)
+
+#Combine all error rates
+misclass <- c(dt=0.076, rf=0.055, multinom=0.03, polr=0.02)
+logloss <- c(dt=1.764, rf=0.286, multinom=0.069, polr=0.053)
+cv.step.runtime.ms <- c(dt=17.08, rf=1484.29, multinom=31.42, polr=30.44)
+model.runtime.ms <- c(dt=2.66, rf=141.09, multinom=0.76, polr=0.94)
+labels <- c('dt', 'rf', 'multinom', 'polr')
+
+#Aggregate as a table
+tb <- rbind(misclass, logloss, cv.step.runtime.ms, model.runtime.ms)
+colnames(tb) <- c('Decision Tree', 'Random Forest', 
+                  'Multinom', 'Proportional Odds')
+rownames(tb) <- c('Misclassification', 'Log Loss', 'Runtime CV/Step (ms)',
+                  'Runtime Model (ms)')
+
+grid.table(tb)
+
+#Plot
+plot(1:4, misclass, type = 'l', col = 'blue', ylim = c(0, 2),
+     xaxt = "n", main = 'Error Rates Plot of Four Models',
+     xlab = 'Model Name', ylab = 'Error Rate')
+lines(1:4, logloss, col = 'red')
+legend(3, 1.9, c('Misclass', 'Log Loss'), lty = c(1, 1),
+       lwd=c(1,1),col=c('blue','red'), box.lty = 0)
+axis(1, at=1:4, labels = labels)
+```

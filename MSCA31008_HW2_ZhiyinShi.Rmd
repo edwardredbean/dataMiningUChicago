@@ -1,0 +1,216 @@
+---
+title: "MSCA31008_HW2"
+author: "Zhiyin Shi"
+date: "January 19, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Use GermanCredit Data from caret
+```{r}
+library(caret)
+data("GermanCredit")
+my.data <- GermanCredit
+```
+
+1. Select the numerical variables that you think are useful
+```{r}
+#1.1 Extract all numerical variables in the dataset
+my.data.numerical <- my.data[, 1:7]
+
+#1.2 Perform stepwise method and select top predictors that contribute to r^2 most.
+y <- "Amount"
+available.x <- colnames(my.data.numerical)[-2]
+chosen.x <- NULL
+r2 <- NULL
+
+while (length(available.x) > 0) {
+  best.r2 <- 0
+  for (this.x in available.x) {
+    rhs <- paste(c(chosen.x, this.x), collapse=" + ")
+    f <- as.formula(paste(y, rhs, sep=" ~ "))
+    this.r2 <- summary(lm(f, data=my.data.numerical))$r.square
+    if (this.r2 > best.r2) {
+      best.r2 <- this.r2
+      best.x <- this.x
+    }
+  }
+  chosen.x <- c(chosen.x, best.x)
+  available.x <- available.x[available.x != best.x]
+  r2 <- c(r2, best.r2)
+}
+chosen.x <- c("(Intercept)", chosen.x)
+r2 <- c(summary(lm(Amount ~ 1, data=my.data.numerical))$r.square, r2)
+
+(cum.r2 <- cbind(chosen.x, r2))
+```
+From the table of cumulative r^2, we will select "Duration", "InstallmentRatePercentage", "Age" as our numerical variables for analysis.\
+\
+2. Use kmeans and komeans
+3. Generate kmeans solution with K = 2-10, produce VAF. 
+```{r}
+#Generate new dataset contains useful data only
+my.data.analysis <- my.data.numerical[,c(1,3,5)]
+
+#Create training/testing datasets
+index.train <- sample(1:nrow(my.data.analysis), size = 0.632 * nrow(my.data.analysis))
+
+for (i in 2:10) {
+  var.name <- paste("kmclus.", i, sep = "")
+  assign(var.name, kmeans(my.data.analysis[index.train, ], i, nstart = 50))
+}
+
+kmclus.btwss <- c(kmclus.2$betweenss, kmclus.3$betweenss, kmclus.4$betweenss, 
+            kmclus.5$betweenss, kmclus.6$betweenss, kmclus.7$betweenss, 
+            kmclus.8$betweenss, kmclus.9$betweenss, kmclus.10$betweenss)
+kmclus.totss <- c(kmclus.2$totss, kmclus.3$totss, kmclus.4$totss, kmclus.5$totss,
+                  kmclus.6$totss, kmclus.7$totss, kmclus.8$totss, kmclus.9$totss,
+                  kmclus.10$totss)
+
+kmclus.vaf <- as.matrix(kmclus.btwss / kmclus.totss)
+rownames(kmclus.vaf) <- paste("kmclus.", 2:10, sep = "")
+colnames(kmclus.vaf) <- "VAF"
+kmclus.vaf
+```
+
+4. Perform Scree Tests to choose appropriate number of k-mean clusters\
+\
+First we produce a scree plot (as shown in part 5 below) of number of clusters versus VAF (variance accounted for), where VAF is equivalent to r^2 and is the sum of squares between clusters as a percentage of total sum of squares. Usually, the closer VAF to 1 the better, but to maintain simplicity, we usually identify the "elbow" point where the rate of increase drops. In our case, the "elbow" point is at 3-clusters.\
+\
+5. Show the scree plot
+```{r}
+par(mfrow=c(1,1))
+plot(2:10, kmclus.vaf[1:9, 1], main = "Scree Plot for Kmeans Clustering Training", 
+     xlab = "Number of Clusters", ylab = "VAF", type = "l", col = "11")
+```
+
+6. Choose 1 K-means solution by a) VAF cretiria; b) Intepretability of segments; c) Goodness of fit in holdout.\
+a) As described in 4 and 5, the K-means solution with 3 clusters is the best choice. Despite the VAF continues to increase up to 90% with 10 clusters, the rate of increase drops significantly after 3 clusters. To maintain simplicity and interpretability, I choose 3 clusters solution.\
+\
+b) By generating pairwise plots among the 3 variables I choose, it is found the plot between age and duration best visualized the data. Look at the 9 plots with cluster labeled below:
+```{r}
+par(mfrow = c(3,3))
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.2$cluster + 1), main = "2 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.3$cluster + 1), main = "3 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.4$cluster + 1), main = "4 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.5$cluster + 1), main = "5 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.6$cluster + 1), main = "6 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.7$cluster + 1), main = "7 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.8$cluster + 1), main = "8 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.9$cluster + 1), main = "9 Clusters")
+plot(my.data.analysis[index.train,c(1,3)], 
+     col = (kmclus.10$cluster + 1), main = "10 Clusters")
+```
+From the plot, the solution with 3 clusters appears to have the most clear boundaries among segments and similar cluster sizes. Also, these three clusters can be easily seperated by dividing age into adult and middle-aged and by dividing duration into short-term and long-term.\
+
+c)Goodness of fit in holdout
+```{r}
+kmclus.train.centers <- list(kmclus.2$centers, kmclus.3$centers, kmclus.4$centers, 
+                             kmclus.5$centers, kmclus.6$centers, kmclus.7$centers, 
+                             kmclus.8$centers, kmclus.9$centers, kmclus.10$centers)
+
+for (i in 2:10) {
+  var.name <- paste("test.kmclus.", i, sep = "")
+  assign(var.name, kmeans(my.data.analysis[-index.train, ], 
+                          centers = kmclus.train.centers[[i - 1]], i))
+}
+
+kmclus.btwss.test <- c(test.kmclus.2$betweenss, test.kmclus.3$betweenss, 
+                       test.kmclus.4$betweenss, test.kmclus.5$betweenss, 
+                       test.kmclus.6$betweenss, test.kmclus.7$betweenss,
+                       test.kmclus.8$betweenss, test.kmclus.9$betweenss, 
+                       test.kmclus.10$betweenss)
+kmclus.totss.test <- c(test.kmclus.2$totss, test.kmclus.3$totss, test.kmclus.4$totss, 
+                       test.kmclus.5$totss, test.kmclus.6$totss, test.kmclus.7$totss, 
+                       test.kmclus.8$totss, test.kmclus.9$totss, test.kmclus.10$totss)
+
+kmclus.vaf.test <- as.matrix(kmclus.btwss.test / kmclus.totss.test)
+rownames(kmclus.vaf.test) <- paste("test.kmclus.", 2:10, sep = "")
+colnames(kmclus.vaf.test) <- "VAF"
+kmclus.vaf.test
+
+#Scree Plot
+par(mfrow=c(1,1))
+plot(2:10, kmclus.vaf.test[1:9, 1], main = "Scree Plot for Kmeans Clustering Testing",
+     xlab = "Number of Clusters", ylab = "VAF", type = "l", col = "11")
+```
+By applying K-means model to testing data and plotting VAF for each number of clusters, we can see the VAF at each level of cluster did not vary much between training and testing sample therefore the 3-cluster assignment works equally well in the holdout sample. From the scree plot, the elbow appears at number of cluster = 3 therefore we choose 3-cluster as our final K-means solution.
+
+7. Generate 3-5 komeans
+```{r}
+source("/Users/JaneShi/Desktop/MSCA31008/Assignment2/komeans.R")
+
+for (i in 2:6) {
+  var.name <- paste("komclus.", i, sep = "")
+  assign(var.name, komeans(data = my.data.analysis[index.train, ], nclust = i, 
+                           lnorm = 2, nloops = 50, tolerance = 0.00001, seed = 711))
+}
+
+komclus.vaf.train <- as.matrix(c(komclus.2$VAF, komclus.3$VAF, komclus.4$VAF, 
+                                komclus.5$VAF, komclus.6$VAF))
+rownames(komclus.vaf.train) <- paste("komclus.", 2:6, sep = "")
+colnames(komclus.vaf.train) <- "VAF"
+komclus.vaf.train
+
+plot(2:6, komclus.vaf.train[1:5, 1], main = "Scree Plot for Komeans Clustering Train",
+     xlab = "Number of Clusters", ylab = "VAF", type = "l", col = "11")
+```
+
+8. Compare the 3-cluster kmeans and komeans solution. (According to scree plot for Komeans, 4-cluster is a better solution, but we choose to use 3-cluster for interpretibility and comparison purposes.)
+```{r}
+compare <- as.data.frame(matrix(c(kmclus.btwss[2] / kmclus.totss[2], komclus.3$VAF
+), nrow = 2))
+rownames(compare) <- c("kmeans.3", "komeans.3")
+colnames(compare) < c("VAF")
+compare
+
+#By looking into the komeans code, groups (1,3,5,7) belongs to the first cluster, (2,3,6,7) belongs to the second, (4,5,6,7) belongs to third cluster.
+
+(clus.size.km <- kmclus.3$size)
+(clus.size.kom <- 
+  c(sum(komclus.3$Group==1,komclus.3$Group==3,komclus.3$Group==5,komclus.3$Group ==7),
+  sum(komclus.3$Group==2,komclus.3$Group==3,komclus.3$Group==6,komclus.3$Group==7),
+  sum(komclus.3$Group==4,komclus.3$Group==5,komclus.3$Group==6,komclus.3$Group==7)))
+```
+These two methods results in similar VAFs (62.85% and  61.87%), but k overlapping means solution has generated more evenly splitted sample sizes (kom: 225, 159, 160 while km: 348, 133, 151).\
+\
+9. Summarize your results\
+\
+By performing both kmeans and komeans analysis through a number of measures including scree plots for VAF, performance in test sample, uniformity of cluster sizes as well as interpretibility, we believe 3-cluster is the best solution to split the sample. In the 3-cluster final solution, these three clusters can be easily seperated by dividing age into adult and middle-aged and by dividing duration into short-term and long-term. So one cluster represents short-term&adult, one represents long-term&adult and the last one as middle-aged&short-term. \
+\
+10. You are to recruit 30 people per segment for focus groups and follow-up AU.\
+\
+a. What approach will you take to recruit people over telephone?\
+b. Assume consumers who are recruited will be reimbursed for either focus groups or AUU. Which of the consumers will you try to recruit?\
+c. How will you identify if a new recruit belongs to a group?\
+\
+Ans.:
+1. When recruit people, ask questions related to the 3 variables identified earlier  (Age, Installment, Duration) only.\
+\
+2. Compare their answers with the center of each cluster and assign them to one of the cluster according to the Euclidean distance. \
+\
+3. Randomly seperate each cluster into two subgroups of approximately same size for focus group and AUU respectively.\
+
+
+
+
+
+
+
+
+
+
+
+
+
